@@ -2,7 +2,7 @@
 
 This project contains implementation of decentralized autonomous organization, tests with 100% coverage, deploy script and usefull tasks 
 
-Operating principle
+## Operating principle
 
 User can deposit tokens and get corresponding suffrage power. Chairman can suggest a proposal to call a specific function on a specific contract. If users voted with enough suffrage power for a proposal, proposal will be executed
 
