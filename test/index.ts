@@ -129,7 +129,6 @@ describe("Test DAO", function () {
     DAO = await DAOContract.deploy(chairPerson.address, token.address, testMinimumQuorum, testDebatingPeriodDuration);
     await DAO.deployed();
     testCallData = getTestCallData(user3.address, testUser3Amount);
-    tokenTotalSupply = await token.totalSupply();
   });
 
   it("Test deposit behaviour", async function () {
@@ -210,6 +209,26 @@ describe("Test DAO", function () {
     const [[proposalId, votesFor, votesAgainst, ]] = votedEvent.args;
     expect(votesFor).to.equal(0);
     expect(votesAgainst).to.equal(testUser1Amount);
+
+  });
+
+  it("Check voting for and against behaviour", async () => {
+    await token.connect(user1).approve(DAO.address, testUser1Amount);
+    await token.connect(user2).approve(DAO.address, testUser2Amount);
+
+    await DAO.connect(user1).deposit(testUser1Amount);
+    await DAO.connect(user2).deposit(testUser2Amount);
+
+    await DAO.connect(chairPerson).addProposal(testCallData, testRecepient, testDescription);
+    await DAO.connect(user1).vote(firstProposalId, false);
+    const votingTransaction = await DAO.connect(user2).vote(firstProposalId, true);
+
+    const rc = await votingTransaction.wait();
+    const votedEvent = rc.events.find((e: { event: string }) => e.event == 'Voted');
+
+    const [[proposalId, votesFor, votesAgainst, ]] = votedEvent.args;
+    expect(votesFor).to.equal(testUser1Amount);
+    expect(votesAgainst).to.equal(testUser2Amount);
 
   });
 

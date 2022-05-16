@@ -63,6 +63,7 @@ contract DAO {
 
     function addProposal(bytes memory callData, address recipient, string memory description) public returns (uint256 proposalId) {
         require(msg.sender == chairPerson, "Only chairperson can do that");
+
         proposalId = proposalsNum;
         proposals[proposalId] = Proposal(proposalId, 0, 0, block.timestamp + debatingPeriodDuration, recipient, true, callData, description);
         proposalsNum++;
@@ -76,20 +77,20 @@ contract DAO {
 
         uint256 userBalance = balances[msg.sender];
         uint256 madeVotes = userVotes[proposalId][msg.sender];
-
         uint256 suffrage = userBalance - madeVotes;
 
         require(suffrage > 0, "No suffrage");
 
-        if(madeVotes == 0) 
+        if (madeVotes == 0) 
             lockCooldowns[msg.sender] = max(proposal.deadline, lockCooldowns[msg.sender]);
 
         userVotes[proposalId][msg.sender] = userBalance;
 
-        if(against)
+        if (against)
             proposal.votesAgainst += suffrage;
         else
             proposal.votesFor += suffrage;
+
         emit Voted(proposal);
     }
 
@@ -101,10 +102,9 @@ contract DAO {
 
         proposal.isActive = false;
 
-        if(proposal.votesFor + proposal.votesAgainst < minimumQuorum) {
+        if (proposal.votesFor + proposal.votesAgainst < minimumQuorum) {
             emit ProposalFinished(FinishedProposalStatus.RejectedTooFewQuorum, proposal);
-        } 
-        else if(proposal.votesFor <= proposal.votesAgainst) {
+        } else if (proposal.votesFor <= proposal.votesAgainst) {
             emit ProposalFinished(FinishedProposalStatus.Rejected, proposal);
         } else {
             (bool success, ) = proposal.recipient.call(proposal.callData);
