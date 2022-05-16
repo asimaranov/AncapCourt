@@ -6,7 +6,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract DAO {
     struct Proposal {
         uint256 proposalId;
-        uint256 totalVotes;
+        uint256 votesFor;
+        uint256 votesAgainst;
         uint256 deadline;
         address recipient;
         bool isActive;
@@ -16,6 +17,7 @@ contract DAO {
 
     enum FinishedProposalStatus {
         Rejected,
+        RejectedTooFewQuorum,
         ConfirmedCallSucceeded,
         ConfirmedCallFailded
     }
@@ -28,14 +30,18 @@ contract DAO {
     mapping(address => uint256) private balances;
     mapping(uint256 => Proposal) private proposals;
     mapping(uint256 => mapping(address => uint256)) private userVotes;
-    mapping(address => uint256) private totalUserVotings;
-    mapping(uint256 => address[]) private votingsParticipants;
+    mapping(address => uint256) private lockCooldowns;
     
     event Deposited(address user, uint256 amount);
     event Proposed(Proposal proposal);
     event Voted(Proposal proposal);
     event ProposalFinished(FinishedProposalStatus status, Proposal proposal);
     event Withdraw(address user, uint256 amount);
+
+    modifier onlyByChoice {
+        require(msg.sender == address(this), "You can't to that");
+        _;
+    }
 
     constructor(
         address _chairPerson,
@@ -58,12 +64,12 @@ contract DAO {
     function addProposal(bytes memory callData, address recipient, string memory description) public returns (uint256 proposalId) {
         require(msg.sender == chairPerson, "Only chairperson can do that");
         proposalId = proposalsNum;
-        proposals[proposalId] = Proposal(proposalId, 0, block.timestamp + debatingPeriodDuration, recipient, true, callData, description);
+        proposals[proposalId] = Proposal(proposalId, 0, 0, block.timestamp + debatingPeriodDuration, recipient, true, callData, description);
         proposalsNum++;
         emit Proposed(proposals[proposalId]);
     }
 
-    function vote(uint256 proposalId) public {
+    function vote(uint256 proposalId, bool against) public {
         Proposal storage proposal = proposals[proposalId];
         require(proposal.isActive, "Proposal voting is not active");
         require(proposal.deadline >= block.timestamp, "Proposal voting ended");
@@ -75,13 +81,15 @@ contract DAO {
 
         require(suffrage > 0, "No suffrage");
 
-        if (madeVotes == 0) { 
-            totalUserVotings[msg.sender]++;
-            votingsParticipants[proposalId].push(msg.sender);
-        }
+        if(madeVotes == 0) 
+            lockCooldowns[msg.sender] = max(proposal.deadline, lockCooldowns[msg.sender]);
 
         userVotes[proposalId][msg.sender] = userBalance;
-        proposal.totalVotes += suffrage;
+
+        if(against)
+            proposal.votesAgainst += suffrage;
+        else
+            proposal.votesFor += suffrage;
         emit Voted(proposal);
     }
 
@@ -93,27 +101,40 @@ contract DAO {
 
         proposal.isActive = false;
 
-        uint256 votingParticipantsNum = votingsParticipants[proposalId].length;
-
-        for(uint256 i = 0; i < votingParticipantsNum; i++) {
-            totalUserVotings[votingsParticipants[proposalId][i]]--;
-        }
-
-        if(proposal.totalVotes >= minimumQuorum) {
+        if(proposal.votesFor + proposal.votesAgainst < minimumQuorum) {
+            emit ProposalFinished(FinishedProposalStatus.RejectedTooFewQuorum, proposal);
+        } 
+        else if(proposal.votesFor <= proposal.votesAgainst) {
+            emit ProposalFinished(FinishedProposalStatus.Rejected, proposal);
+        } else {
             (bool success, ) = proposal.recipient.call(proposal.callData);
             emit ProposalFinished(success ? FinishedProposalStatus.ConfirmedCallSucceeded : FinishedProposalStatus.ConfirmedCallFailded, proposal);
-        } else {
-            emit ProposalFinished(FinishedProposalStatus.Rejected, proposal);
         }
     }
 
     function withdraw(uint256 amount) public {
         uint256 userBalance = balances[msg.sender];
         require(userBalance >= amount, "Too few tokens on balance");
-        require(totalUserVotings[msg.sender] == 0, "You have an active voting");
+        require(lockCooldowns[msg.sender] < block.timestamp, "You have an active voting");
         
         balances[msg.sender] -= amount;
         voteToken.transfer(msg.sender, amount);
         emit Withdraw(msg.sender, amount);
+    }
+
+    function setChairPerson(address newChairPerson) public onlyByChoice {
+        chairPerson = newChairPerson;
+    }
+
+    function setMinimumQuorum(uint256 newMinimumQuorum) public onlyByChoice {
+        minimumQuorum = newMinimumQuorum;
+    }
+
+    function setDebatingPeriodDuration(uint256 newDebatingPeriodDuration) public onlyByChoice {
+        debatingPeriodDuration = newDebatingPeriodDuration;
+    }
+
+    function max(uint256 a, uint256 b) private pure returns (uint256) {
+        return a >= b ? a : b;
     }
 }
