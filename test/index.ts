@@ -335,12 +335,33 @@ describe("Test DAO", function () {
     expect(isActive).to.equal(false);
   });
 
-  it("Check proposal finishing, case of rejecting, enough quorum but most people voted against", async () => {
+  it("Check proposal finishing, case of rejecting, enough quorum but all voices are against", async () => {
     await DAO.connect(chairPerson).addProposal(testCallData, testRecepient, testDescription);
 
     await token.connect(user2).approve(DAO.address, testUser2Amount);
     await DAO.connect(user2).deposit(testUser2Amount);
     await DAO.connect(user2).vote(firstProposalId, true);
+
+    await network.provider.send("evm_increaseTime", [testDebatingPeriodDuration + 1]);
+    const finishTransaction = await DAO.connect(user1).finishProposal(firstProposalId);
+    const rc = await finishTransaction.wait();
+    const finishEvent = rc.events.find((e: { event: string }) => e.event == 'ProposalFinished');
+    const [status, [proposalId, votesFor, votesAgainst, deadline, recipient, isActive, callData, description]] = finishEvent.args;
+
+    expect(status).to.equal(FinishedProposalStatus.Rejected);
+    expect(isActive).to.equal(false);
+  });
+
+  it("Check proposal finishing, case of rejecting, enough quorum but most voices are against", async () => {
+    await DAO.connect(chairPerson).addProposal(testCallData, testRecepient, testDescription);
+
+    await token.connect(user2).approve(DAO.address, testUser2Amount);
+    await DAO.connect(user2).deposit(testUser2Amount);
+    await DAO.connect(user2).vote(firstProposalId, true);
+
+    await token.connect(user1).approve(DAO.address, testUser1Amount);
+    await DAO.connect(user1).deposit(testUser1Amount);
+    await DAO.connect(user1).vote(firstProposalId, false);
 
     await network.provider.send("evm_increaseTime", [testDebatingPeriodDuration + 1]);
     const finishTransaction = await DAO.connect(user1).finishProposal(firstProposalId);
